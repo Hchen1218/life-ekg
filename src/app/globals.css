@@ -1,0 +1,387 @@
+@import "tailwindcss";
+
+:root {
+  /* Base colors */
+  --background: #f2f2f7;
+  --foreground: #1c1c1e;
+  
+  /* iOS System Colors */
+  --ios-blue: #007AFF;
+  --ios-green: #34C759;
+  --ios-orange: #FF9500;
+  --ios-red: #FF3B30;
+  --ios-purple: #AF52DE;
+  --ios-indigo: #5856D6;
+  --ios-cyan: #5AC8FA;
+  --ios-gray: #8E8E93;
+  
+  /* Fortune Level Colors */
+  --fortune-major-good: #FFD700;
+  --fortune-medium-good: #FF9500;
+  --fortune-minor-good: #34C759;
+  --fortune-neutral: #8E8E93;
+  --fortune-minor-bad: #5AC8FA;
+  --fortune-medium-bad: #5856D6;
+  --fortune-major-bad: #AF52DE;
+  
+  /* Glass Effect */
+  --glass-bg: rgba(255, 255, 255, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.2);
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #000000;
+    --foreground: #f5f5f7;
+    --glass-bg: rgba(28, 28, 30, 0.7);
+    --glass-border: rgba(255, 255, 255, 0.1);
+    --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  }
+}
+
+@theme inline {
+  /* Base */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  
+  /* iOS System Colors */
+  --color-ios-blue: var(--ios-blue);
+  --color-ios-green: var(--ios-green);
+  --color-ios-orange: var(--ios-orange);
+  --color-ios-red: var(--ios-red);
+  --color-ios-purple: var(--ios-purple);
+  --color-ios-indigo: var(--ios-indigo);
+  --color-ios-cyan: var(--ios-cyan);
+  --color-ios-gray: var(--ios-gray);
+  
+  /* Fortune Colors */
+  --color-fortune-major-good: var(--fortune-major-good);
+  --color-fortune-medium-good: var(--fortune-medium-good);
+  --color-fortune-minor-good: var(--fortune-minor-good);
+  --color-fortune-neutral: var(--fortune-neutral);
+  --color-fortune-minor-bad: var(--fortune-minor-bad);
+  --color-fortune-medium-bad: var(--fortune-medium-bad);
+  --color-fortune-major-bad: var(--fortune-major-bad);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* iOS-style scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 3px;
+}
+
+@media (prefers-color-scheme: dark) {
+  ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+  }
+}
+
+/* Liquid Glass utility classes */
+.glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+}
+
+/* iOS-style focus ring */
+*:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.3);
+}
+
+/* Smooth page transitions */
+.page-transition {
+  animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Loading pulse animation */
+@keyframes pulse-glow {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* Medical Monitor Styles */
+.medical-monitor {
+  background: linear-gradient(135deg, #0a0f14 0%, #0d1117 50%, #0a0f14 100%);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+  box-shadow: 
+    0 0 20px rgba(16, 185, 129, 0.1),
+    inset 0 0 60px rgba(0, 0, 0, 0.5);
+}
+
+/* EKG Line Animation */
+.ekg-line {
+  stroke-dasharray: 2000;
+  stroke-dashoffset: 2000;
+  animation: ekg-draw 2s ease-out forwards;
+}
+
+@keyframes ekg-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* Node Pulse Animation */
+.node-pulse {
+  animation: node-glow 2s ease-in-out infinite;
+}
+
+@keyframes node-glow {
+  0%, 100% {
+    filter: drop-shadow(0 0 2px currentColor);
+  }
+  50% {
+    filter: drop-shadow(0 0 8px currentColor) drop-shadow(0 0 12px currentColor);
+  }
+}
+
+/* Pulse Ring for Current Year */
+.animate-pulse-ring {
+  animation: pulse-ring 1.5s ease-out infinite;
+}
+
+@keyframes pulse-ring {
+  0% {
+    stroke-opacity: 1;
+  }
+  50% {
+    stroke-opacity: 0.5;
+  }
+  100% {
+    stroke-opacity: 1;
+  }
+}
+
+/* Progress Bar Styles */
+.progress-bar-container {
+  background: linear-gradient(90deg, #0a0f14 0%, #1a1f24 100%);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.progress-bar-fill {
+  background: linear-gradient(90deg, #10b981 0%, #34d399 50%, #6ee7b7 100%);
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+  transition: width 0.3s ease-out;
+}
+
+/* Typing Animation */
+.typing-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  background: #10b981;
+  margin-left: 2px;
+  animation: blink 0.8s infinite;
+}
+
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+/* Medical Report Card */
+.medical-report-card {
+  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s ease;
+}
+
+.medical-report-card:hover {
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
+}
+
+@media (prefers-color-scheme: dark) {
+  .medical-report-card {
+    background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+    border-color: #334155;
+  }
+}
+
+/* Scanline Effect */
+.scanline {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(16, 185, 129, 0.5), transparent);
+  animation: scanline 3s linear infinite;
+}
+
+@keyframes scanline {
+  0% { top: 0; opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { top: 100%; opacity: 0; }
+}
+
+/* Analysis Stage Animation */
+.analysis-stage {
+  animation: stage-enter 0.4s ease-out forwards;
+  opacity: 0;
+  transform: translateX(-10px);
+}
+
+@keyframes stage-enter {
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Apple Health EKG Grid (Paper Style) */
+.health-ekg-paper {
+  background-color: #FFFFFF;
+  background-image: 
+    linear-gradient(#FF3B3020 1px, transparent 1px),
+    linear-gradient(90deg, #FF3B3020 1px, transparent 1px),
+    linear-gradient(#FF3B3010 0.5px, transparent 0.5px),
+    linear-gradient(90deg, #FF3B3010 0.5px, transparent 0.5px);
+  background-size: 50px 50px, 50px 50px, 10px 10px, 10px 10px;
+  background-position: -1px -1px;
+  border: 1px solid #E5E5EA;
+}
+
+/* Apple Health Summary Card */
+.health-summary-card {
+  background: #FFFFFF;
+  border-radius: 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  cursor: pointer;
+}
+
+.health-summary-card:active {
+  transform: scale(0.98);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+/* iOS Bottom Sheet / Modal Animation */
+.ios-modal-overlay {
+  animation: fadeIn 0.2s ease-out forwards;
+}
+
+.ios-modal-content {
+  animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Apple Health Card Style */
+.apple-health-card {
+  background: white;
+  border-radius: 20px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+  transition: all 0.2s ease;
+}
+
+.dark .apple-health-card {
+  background: #1c1c1e;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
+}
+
+.apple-health-card:active {
+  transform: scale(0.99);
+}
+
+/* Capsule Progress Bar */
+.capsule-progress {
+  height: 12px;
+  border-radius: 6px;
+  background: #f2f2f7;
+  overflow: hidden;
+}
+
+.dark .capsule-progress {
+  background: #2c2c2e;
+}
+
+.capsule-progress-bar {
+  height: 100%;
+  border-radius: 6px;
+  transition: width 1s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* Health Card EKG Animation */
+@keyframes healthPulse {
+  0% {
+    stroke-dashoffset: 120;
+  }
+  50% {
+    stroke-dashoffset: 0;
+  }
+  100% {
+    stroke-dashoffset: -120;
+  }
+}
+
+@keyframes healthDot {
+  0%, 100% {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  40%, 60% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-health-pulse {
+  animation: healthPulse 2s ease-in-out infinite;
+}
+
+.animate-health-dot {
+  animation: healthDot 2s ease-in-out infinite;
+}
