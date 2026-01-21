@@ -299,12 +299,6 @@ export default function Home() {
             streamingText=""
           />
           
-          <div className="text-center">
-            <p className="text-sm text-[#FF9500] font-medium">
-              请保持屏幕常亮，不要切换到其他应用
-            </p>
-          </div>
-          
           {timelineData && (
             <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
               <MedicalEKGChart data={timelineData} />
