@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { Download, Share2, Check, Loader2 } from "lucide-react";
 
 interface ReportExportProps {
@@ -13,23 +13,36 @@ export function ReportExport({ reportRef, userName = "用户" }: ReportExportPro
   const [isSharing, setIsSharing] = useState(false);
   const [exportSuccess, setExportSuccess] = useState(false);
 
-  const generateReportCanvas = async () => {
+  const generatePDF = async (): Promise<Blob> => {
     if (!reportRef.current) throw new Error("Report element not found");
     
-    try {
-      const html2canvas = (await import("html2canvas")).default;
-      return await html2canvas(reportRef.current, {
-        backgroundColor: "#F5F5F7",
-        scale: 2,
-        useCORS: true,
-        logging: true,
-        ignoreElements: (element) => element.classList.contains("no-print"),
-      });
-    } catch (error) {
-      console.error("html2canvas error:", error);
-      alert(`生成图片失败: ${(error as Error).message}`);
-      throw error;
-    }
+    const html2canvas = (await import("html2canvas")).default;
+    const { jsPDF } = await import("jspdf");
+    
+    const canvas = await html2canvas(reportRef.current, {
+      backgroundColor: "#F5F5F7",
+      scale: 2,
+      useCORS: true,
+      logging: false,
+      ignoreElements: (element) => element.classList.contains("no-print"),
+    });
+    
+    const imgData = canvas.toDataURL("image/png");
+    const imgWidth = canvas.width;
+    const imgHeight = canvas.height;
+    
+    const pdfWidth = 210;
+    const pdfHeight = (imgHeight * pdfWidth) / imgWidth;
+    
+    const pdf = new jsPDF({
+      orientation: pdfHeight > pdfWidth ? "portrait" : "landscape",
+      unit: "mm",
+      format: [pdfWidth, pdfHeight],
+    });
+    
+    pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
+    
+    return pdf.output("blob");
   };
 
   const handleDownload = async () => {
@@ -38,12 +51,14 @@ export function ReportExport({ reportRef, userName = "用户" }: ReportExportPro
     setIsExporting(true);
     
     try {
-      const canvas = await generateReportCanvas();
-
+      const pdfBlob = await generatePDF();
+      
+      const url = URL.createObjectURL(pdfBlob);
       const link = document.createElement("a");
-      link.download = `life-ekg-report-${userName}-${Date.now()}.png`;
-      link.href = canvas.toDataURL("image/png");
+      link.download = `Life-EKG-${userName}-${new Date().toISOString().split("T")[0]}.pdf`;
+      link.href = url;
       link.click();
+      URL.revokeObjectURL(url);
       
       setExportSuccess(true);
       setTimeout(() => setExportSuccess(false), 2000);
@@ -61,17 +76,10 @@ export function ReportExport({ reportRef, userName = "用户" }: ReportExportPro
     setIsSharing(true);
     
     try {
-      const canvas = await generateReportCanvas();
-
-      const blob = await new Promise<Blob | null>((resolve) => 
-        canvas.toBlob(resolve, "image/png")
-      );
-
-      if (!blob) {
-        throw new Error("Failed to create blob");
-      }
-
-      const file = new File([blob], `life-ekg-report.png`, { type: "image/png" });
+      const pdfBlob = await generatePDF();
+      const fileName = `Life-EKG-${userName}-${new Date().toISOString().split("T")[0]}.pdf`;
+      const file = new File([pdfBlob], fileName, { type: "application/pdf" });
+      
       const shareData = {
         title: "Life EKG 人生心电图报告",
         text: `${userName}的人生运势分析报告`,
@@ -81,12 +89,13 @@ export function ReportExport({ reportRef, userName = "用户" }: ReportExportPro
       if (navigator.share && navigator.canShare && navigator.canShare(shareData)) {
         await navigator.share(shareData);
       } else {
-        // Fallback for browsers that don't support file sharing
+        const url = URL.createObjectURL(pdfBlob);
         const link = document.createElement("a");
-        link.download = `life-ekg-report-${userName}-${Date.now()}.png`;
-        link.href = canvas.toDataURL("image/png");
+        link.download = fileName;
+        link.href = url;
         link.click();
-        alert("您的设备不支持直接分享图片，已为您自动下载报告图片。");
+        URL.revokeObjectURL(url);
+        alert("您的设备不支持直接分享文件，已为您自动下载报告。");
       }
     } catch (error) {
       if ((error as Error).name !== "AbortError") {

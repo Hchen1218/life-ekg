@@ -126,7 +126,6 @@ export function AnalysisProgress({ isAnalyzing, baziData }: AnalysisProgressProp
             )}
             <span className="text-sm font-medium text-[#1D1D1F]">
               AI 深度分析中
-              <span className="text-[#86868B] font-normal ml-1">（约需 1-2 分钟）</span>
             </span>
           </div>
 

@@ -38,6 +38,33 @@ interface DetailResult {
   advice?: string;
 }
 
+async function fetchStreamWithRetry(
+  params: FortuneAnalysisParams,
+  type: "timeline" | "detail" | "summary" | "dimensions",
+  baziContextCache?: string,
+  onBazi?: (data: BaziData) => void,
+  activationKey?: string,
+  maxRetries: number = 3
+): Promise<TimelineResult | DetailResult> {
+  let lastError: Error | null = null;
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await fetchStream(params, type, baziContextCache, onBazi, activationKey);
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      console.warn(`API 请求失败 (尝试 ${attempt}/${maxRetries}): ${lastError.message}`);
+      
+      if (attempt < maxRetries) {
+        const delay = Math.pow(2, attempt - 1) * 1000;
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  }
+  
+  throw lastError || new Error("请求失败，请稍后重试");
+}
+
 async function fetchStream(
   params: FortuneAnalysisParams,
   type: "timeline" | "detail" | "summary" | "dimensions",
@@ -129,7 +156,7 @@ export default function Home() {
       const scopes = ["timeline_p1", "timeline_p2", "timeline_p3"];
       
       const timelinePromises = scopes.map((scope, index) => 
-        fetchStream(
+        fetchStreamWithRetry(
           { ...params, scope } as any, 
           "timeline",
           undefined,
@@ -167,8 +194,8 @@ export default function Home() {
       setTimelineData(mergedTimeline);
       setLoadingStage("detail");
 
-      const summaryPromise = fetchStream(params, "summary", baziCache, undefined, activationKey);
-      const dimensionPromise = fetchStream(params, "dimensions", baziCache, undefined, activationKey);
+      const summaryPromise = fetchStreamWithRetry(params, "summary", baziCache, undefined, activationKey);
+      const dimensionPromise = fetchStreamWithRetry(params, "dimensions", baziCache, undefined, activationKey);
 
       // Handle Summary First
       summaryPromise.then((res) => {

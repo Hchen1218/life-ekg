@@ -162,7 +162,7 @@ export function MedicalEKGChart({ data, currentYear = new Date().getFullYear() }
             ))}
             <Tooltip content={<CustomTooltip />} cursor={{ stroke: "#E5E5EA", strokeWidth: 1 }} />
             <Area
-              type="monotoneX"
+              type="natural"
               dataKey="value"
               stroke="#FF3B30"
               strokeWidth={2.5}

@@ -20,9 +20,79 @@ export function FortuneForm({ onSubmit, isLoading = false }: FortuneFormProps) {
     pastEvents: "",
   });
   
+  const [birthYear, setBirthYear] = useState("");
+  const [birthMonth, setBirthMonth] = useState("");
+  const [birthDay, setBirthDay] = useState("");
+  const [dateError, setDateError] = useState("");
+  
   const [activationKey, setActivationKey] = useState("");
 
   const [errors, setErrors] = useState<Partial<Record<keyof FortuneAnalysisParams | "activationKey", string>>>({});
+
+  const getDaysInMonth = (year: number, month: number): number => {
+    if (month === 2) {
+      const isLeapYear = (year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0);
+      return isLeapYear ? 29 : 28;
+    }
+    return [4, 6, 9, 11].includes(month) ? 30 : 31;
+  };
+
+  const validateDateInput = (year: string, month: string, day: string): string => {
+    const y = parseInt(year);
+    const m = parseInt(month);
+    const d = parseInt(day);
+    
+    if (year && (year.length > 4 || y < 1900 || y > new Date().getFullYear())) {
+      return "年份无效（1900-" + new Date().getFullYear() + "）";
+    }
+    if (month && (m < 1 || m > 12)) {
+      return "月份无效（1-12）";
+    }
+    if (day && year && month) {
+      const maxDay = getDaysInMonth(y, m);
+      if (d < 1 || d > maxDay) {
+        return `日期无效（${m}月最多${maxDay}天）`;
+      }
+    }
+    return "";
+  };
+
+  const updateBirthDate = (year: string, month: string, day: string) => {
+    const error = validateDateInput(year, month, day);
+    setDateError(error);
+    
+    if (!error && year.length === 4 && month && day) {
+      const formattedMonth = month.padStart(2, "0");
+      const formattedDay = day.padStart(2, "0");
+      setFormData((prev) => ({ ...prev, birthDate: `${year}-${formattedMonth}-${formattedDay}` }));
+    } else {
+      setFormData((prev) => ({ ...prev, birthDate: "" }));
+    }
+  };
+
+  const handleYearChange = (value: string) => {
+    const cleaned = value.replace(/\D/g, "").slice(0, 4);
+    setBirthYear(cleaned);
+    updateBirthDate(cleaned, birthMonth, birthDay);
+  };
+
+  const handleMonthChange = (value: string) => {
+    const cleaned = value.replace(/\D/g, "").slice(0, 2);
+    const num = parseInt(cleaned);
+    if (cleaned === "" || (num >= 0 && num <= 12)) {
+      setBirthMonth(cleaned);
+      updateBirthDate(birthYear, cleaned, birthDay);
+    }
+  };
+
+  const handleDayChange = (value: string) => {
+    const cleaned = value.replace(/\D/g, "").slice(0, 2);
+    const num = parseInt(cleaned);
+    if (cleaned === "" || (num >= 0 && num <= 31)) {
+      setBirthDay(cleaned);
+      updateBirthDate(birthYear, birthMonth, cleaned);
+    }
+  };
 
   const validateForm = (): boolean => {
     const newErrors: Partial<Record<keyof FortuneAnalysisParams | "activationKey", string>> = {};
@@ -31,7 +101,10 @@ export function FortuneForm({ onSubmit, isLoading = false }: FortuneFormProps) {
       newErrors.name = "请输入姓名";
     }
     if (!formData.birthDate) {
-      newErrors.birthDate = "请选择出生日期";
+      newErrors.birthDate = "请输入完整的出生日期";
+    }
+    if (dateError) {
+      newErrors.birthDate = dateError;
     }
     if (!formData.birthTime) {
       newErrors.birthTime = "请选择出生时辰";
@@ -129,32 +202,48 @@ export function FortuneForm({ onSubmit, isLoading = false }: FortuneFormProps) {
           {/* Birth Date Field */}
           <div>
             <label className="block text-xs font-medium text-[#86868B] uppercase tracking-wide mb-2">出生日期</label>
-            <div className="relative">
-              <div 
-                className={`w-full px-4 py-4 bg-[#F5F5F7] rounded-xl transition-all ${
-                  formData.birthDate ? "text-[#1D1D1F]" : "text-[#86868B]"
-                }`}
-              >
-                {formData.birthDate ? (
-                  (() => {
-                    const [year, month, day] = formData.birthDate.split("-");
-                    return `${year}年${parseInt(month)}月${parseInt(day)}日`;
-                  })()
-                ) : (
-                  "请选择出生日期"
-                )}
+            <div className="flex gap-2 items-center">
+              <div className="flex-1">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={birthYear}
+                  onChange={(e) => handleYearChange(e.target.value)}
+                  placeholder="年"
+                  disabled={isLoading}
+                  maxLength={4}
+                  className="w-full px-3 py-4 bg-[#F5F5F7] rounded-xl text-[#1D1D1F] placeholder:text-[#86868B] focus:outline-none focus:ring-2 focus:ring-[#007AFF]/30 transition-all disabled:opacity-50 text-center"
+                />
               </div>
-              
-              <input
-                type="date"
-                value={formData.birthDate}
-                onChange={(e) => handleChange("birthDate", e.target.value)}
-                disabled={isLoading}
-                className="absolute inset-0 w-full h-full opacity-0 z-10 cursor-pointer"
-                required
-              />
+              <span className="text-[#86868B]">年</span>
+              <div className="w-16">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={birthMonth}
+                  onChange={(e) => handleMonthChange(e.target.value)}
+                  placeholder="月"
+                  disabled={isLoading}
+                  maxLength={2}
+                  className="w-full px-2 py-4 bg-[#F5F5F7] rounded-xl text-[#1D1D1F] placeholder:text-[#86868B] focus:outline-none focus:ring-2 focus:ring-[#007AFF]/30 transition-all disabled:opacity-50 text-center"
+                />
+              </div>
+              <span className="text-[#86868B]">月</span>
+              <div className="w-16">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={birthDay}
+                  onChange={(e) => handleDayChange(e.target.value)}
+                  placeholder="日"
+                  disabled={isLoading}
+                  maxLength={2}
+                  className="w-full px-2 py-4 bg-[#F5F5F7] rounded-xl text-[#1D1D1F] placeholder:text-[#86868B] focus:outline-none focus:ring-2 focus:ring-[#007AFF]/30 transition-all disabled:opacity-50 text-center"
+                />
+              </div>
+              <span className="text-[#86868B]">日</span>
             </div>
-            {errors.birthDate && <p className="text-xs text-[#FF3B30] mt-1">{errors.birthDate}</p>}
+            {(dateError || errors.birthDate) && <p className="text-xs text-[#FF3B30] mt-1">{dateError || errors.birthDate}</p>}
           </div>
 
           {/* Gender Field */}
