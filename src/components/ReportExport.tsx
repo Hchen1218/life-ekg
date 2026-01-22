@@ -25,6 +25,27 @@ export function ReportExport({ reportRef, userName = "用户" }: ReportExportPro
       useCORS: true,
       logging: false,
       ignoreElements: (element) => element.classList.contains("no-print"),
+      onclone: (clonedDoc) => {
+        const style = clonedDoc.createElement("style");
+        style.textContent = `
+          * {
+            color-scheme: light !important;
+            --tw-ring-color: #3b82f6 !important;
+            --tw-ring-offset-color: #ffffff !important;
+          }
+          .bg-blue-50 { background-color: #eff6ff !important; }
+          .bg-emerald-50 { background-color: #ecfdf5 !important; }
+          .bg-amber-50 { background-color: #fffbeb !important; }
+          .bg-rose-50 { background-color: #fff1f2 !important; }
+          .text-blue-600 { color: #2563eb !important; }
+          .text-emerald-600 { color: #059669 !important; }
+          .text-amber-600 { color: #d97706 !important; }
+          .text-rose-600 { color: #e11d48 !important; }
+          .bg-blue-500 { background-color: #3b82f6 !important; }
+          .bg-emerald-500 { background-color: #10b981 !important; }
+        `;
+        clonedDoc.head.appendChild(style);
+      },
     });
     
     const imgData = canvas.toDataURL("image/png");

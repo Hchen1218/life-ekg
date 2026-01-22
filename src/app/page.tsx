@@ -5,11 +5,11 @@ import dynamic from "next/dynamic";
 import { FortuneForm } from "@/components/FortuneForm";
 import { AnalysisProgress } from "@/components/AnalysisProgress";
 import { MedicalReportSection, generateDefaultSections, ReportSection } from "@/components/MedicalReportSection";
-import { ReportExport } from "@/components/ReportExport";
 import { DashboardSidebar } from "@/components/DashboardSidebar";
 import { DashboardHeader } from "@/components/DashboardHeader";
 import { FortuneAnalysisParams, FortuneResponse, YearNode, FortuneDimensions } from "@/types/fortune";
 import { generateMockFortuneData } from "@/lib/fortune-utils";
+import { calculateYearScore } from "@/lib/bazi-calculator";
 import { RefreshCw } from "lucide-react";
 
 const MedicalEKGChart = dynamic(
@@ -44,13 +44,14 @@ async function fetchStreamWithRetry(
   baziContextCache?: string,
   onBazi?: (data: BaziData) => void,
   activationKey?: string,
+  sessionId?: string,
   maxRetries: number = 3
 ): Promise<TimelineResult | DetailResult> {
   let lastError: Error | null = null;
   
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      return await fetchStream(params, type, baziContextCache, onBazi, activationKey);
+      return await fetchStream(params, type, baziContextCache, onBazi, activationKey, sessionId);
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
       console.warn(`API 请求失败 (尝试 ${attempt}/${maxRetries}): ${lastError.message}`);
@@ -70,12 +71,13 @@ async function fetchStream(
   type: "timeline" | "detail" | "summary" | "dimensions",
   baziContextCache?: string,
   onBazi?: (data: BaziData) => void,
-  activationKey?: string
+  activationKey?: string,
+  sessionId?: string
 ): Promise<TimelineResult | DetailResult> {
   const response = await fetch("/api/analyze", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ...params, type, baziContextCache, activationKey }),
+    body: JSON.stringify({ ...params, type, baziContextCache, activationKey, sessionId }),
   });
 
   if (!response.ok) {
@@ -150,6 +152,8 @@ export default function Home() {
     setUserName(params.name);
     setLoadingStage("bazi");
 
+    const sessionId = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
+
     try {
       let baziCache: string | undefined;
 
@@ -167,35 +171,62 @@ export default function Home() {
               setLoadingStage("timeline");
             }
           },
-          activationKey
+          activationKey,
+          sessionId
         )
       );
 
-      // Wait for all timeline chunks to complete
       const timelineResults = await Promise.all(timelinePromises);
       
-      // Merge timeline chunks
       let mergedTimeline = timelineResults
         .flatMap(r => (r as TimelineResult).timeline)
         .sort((a, b) => a.year - b.year);
 
-      // Flatten the curve for the "Dead Water" effect
-      // If score is between 40-60, force it to be a small ripple (46-54)
-      mergedTimeline = mergedTimeline.map(node => {
-        if (node.score >= 40 && node.score <= 60) {
-          // Deterministic pseudo-random based on year
-          // (year * 13) % 9 gives range 0-8. 46 + [0-8] = 46-54
-          const flattenedScore = 46 + ((node.year * 13) % 9);
-          return { ...node, score: flattenedScore };
+      if (baziCache) {
+        try {
+          const baziParsed = JSON.parse(baziCache);
+          const dayMaster = baziParsed.bazi?.day?.stem || baziParsed.dayMaster;
+          const dayBranch = baziParsed.bazi?.day?.branch || baziParsed.dayBranch;
+          const favorable = baziParsed.wuxing?.favorable || baziParsed.favorable || [];
+          const unfavorable = baziParsed.wuxing?.unfavorable || baziParsed.unfavorable || [];
+          const dayunList = baziParsed.dayun?.list || [];
+
+          if (dayMaster && dayBranch) {
+            mergedTimeline = mergedTimeline.map(node => {
+              let dayunStem: string | undefined;
+              let dayunBranch: string | undefined;
+              for (const dayun of dayunList) {
+                const [startYear, endYear] = dayun.years.split("-").map(Number);
+                if (node.year >= startYear && node.year <= endYear) {
+                  dayunStem = dayun.period[0];
+                  dayunBranch = dayun.period[1];
+                  break;
+                }
+              }
+
+              const algorithmScore = calculateYearScore({
+                year: node.year,
+                dayMaster,
+                dayBranch,
+                favorable,
+                unfavorable,
+                dayunStem,
+                dayunBranch,
+              });
+
+              return { ...node, score: algorithmScore };
+            });
+          }
+        } catch (e) {
+          console.warn("Failed to apply algorithmic scores, using AI scores:", e);
         }
-        return node;
-      });
+      }
 
       setTimelineData(mergedTimeline);
       setLoadingStage("detail");
 
-      const summaryPromise = fetchStreamWithRetry(params, "summary", baziCache, undefined, activationKey);
-      const dimensionPromise = fetchStreamWithRetry(params, "dimensions", baziCache, undefined, activationKey);
+      const summaryPromise = fetchStreamWithRetry(params, "summary", baziCache, undefined, activationKey, sessionId);
+      const dimensionPromise = fetchStreamWithRetry(params, "dimensions", baziCache, undefined, activationKey, sessionId);
 
       // Handle Summary First
       summaryPromise.then((res) => {
@@ -343,8 +374,6 @@ export default function Home() {
             )}
             
             <div className="pt-8 pb-12 space-y-6">
-              <ReportExport reportRef={reportRef as React.RefObject<HTMLDivElement>} userName={userName} />
-              
               <div className="flex justify-center">
                 <button
                   onClick={handleReset}

@@ -330,3 +330,220 @@ export function calculateBazi(params: {
 export function getTenGodRelation(dayMaster: string, targetStem: string): string {
   return TEN_GODS[dayMaster]?.[targetStem] || "未知";
 }
+
+// ========== 流年评分算法 ==========
+
+// 五行生克关系
+const WUXING_GENERATES: Record<string, string> = {
+  木: "火", 火: "土", 土: "金", 金: "水", 水: "木"
+};
+const WUXING_CONTROLS: Record<string, string> = {
+  木: "土", 土: "水", 水: "火", 火: "金", 金: "木"
+};
+
+// 地支六合
+const LIUHE: Record<string, string> = {
+  子: "丑", 丑: "子", 寅: "亥", 亥: "寅", 卯: "戌", 戌: "卯",
+  辰: "酉", 酉: "辰", 巳: "申", 申: "巳", 午: "未", 未: "午"
+};
+
+// 地支三合（每组三合）
+const SANHE_GROUPS = [
+  ["寅", "午", "戌"], // 火局
+  ["申", "子", "辰"], // 水局
+  ["亥", "卯", "未"], // 木局
+  ["巳", "酉", "丑"], // 金局
+];
+
+// 地支六冲
+const LIUCHONG: Record<string, string> = {
+  子: "午", 午: "子", 丑: "未", 未: "丑", 寅: "申", 申: "寅",
+  卯: "酉", 酉: "卯", 辰: "戌", 戌: "辰", 巳: "亥", 亥: "巳"
+};
+
+// 地支相刑
+const XING_PAIRS: [string, string][] = [
+  ["寅", "巳"], ["巳", "申"], ["申", "寅"], // 三刑
+  ["丑", "戌"], ["戌", "未"], ["未", "丑"], // 三刑
+  ["子", "卯"], ["卯", "子"], // 无礼之刑
+];
+
+// 地支相害
+const HAI_PAIRS: Record<string, string> = {
+  子: "未", 未: "子", 丑: "午", 午: "丑", 寅: "巳", 巳: "寅",
+  卯: "辰", 辰: "卯", 申: "亥", 亥: "申", 酉: "戌", 戌: "酉"
+};
+
+function isSanhe(branch1: string, branch2: string): boolean {
+  for (const group of SANHE_GROUPS) {
+    if (group.includes(branch1) && group.includes(branch2)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function isXing(branch1: string, branch2: string): boolean {
+  return XING_PAIRS.some(
+    ([a, b]) => (a === branch1 && b === branch2) || (a === branch2 && b === branch1)
+  );
+}
+
+export interface YearScoreParams {
+  year: number;
+  dayMaster: string;        // 日主天干（如"甲"）
+  dayBranch: string;        // 日支（如"子"）
+  favorable: string[];      // 喜用五行
+  unfavorable: string[];    // 忌神五行
+  dayunStem?: string;       // 当前大运天干
+  dayunBranch?: string;     // 当前大运地支
+}
+
+/**
+ * 计算流年分数（基于命理算法，非AI）
+ * @returns 0-100 的分数，大部分年份在40-60区间
+ */
+export function calculateYearScore(params: YearScoreParams): number {
+  const { year, dayMaster, dayBranch, favorable, unfavorable, dayunStem, dayunBranch } = params;
+  
+  // 计算流年干支
+  const stemIdx = ((year - 4) % 10 + 10) % 10;
+  const branchIdx = ((year - 4) % 12 + 12) % 12;
+  const liunianStem = STEMS[stemIdx];
+  const liunianBranch = BRANCHES[branchIdx];
+  
+  const dayMasterElement = STEM_ELEMENT[dayMaster];
+  const liunianStemElement = STEM_ELEMENT[liunianStem];
+  const liunianBranchElement = BRANCH_ELEMENT[liunianBranch];
+  
+  let score = 50; // 基础分
+  
+  // ===== 1. 流年天干与日主关系 =====
+  if (WUXING_GENERATES[liunianStemElement] === dayMasterElement) {
+    // 流年生日主 → 印星，得助力
+    score += 10;
+  } else if (liunianStemElement === dayMasterElement) {
+    // 流年比日主 → 比劫，得帮助
+    score += 5;
+  } else if (WUXING_GENERATES[dayMasterElement] === liunianStemElement) {
+    // 日主生流年 → 食伤，泄气但可创造
+    score += 0;
+  } else if (WUXING_CONTROLS[dayMasterElement] === liunianStemElement) {
+    // 日主克流年 → 财星，可得财
+    score += 5;
+  } else if (WUXING_CONTROLS[liunianStemElement] === dayMasterElement) {
+    // 流年克日主 → 官杀，压力
+    score -= 10;
+  }
+  
+  // ===== 2. 流年地支与日支关系 =====
+  if (LIUHE[liunianBranch] === dayBranch) {
+    // 六合 → 和谐
+    score += 8;
+  }
+  if (isSanhe(liunianBranch, dayBranch)) {
+    // 三合 → 助力
+    score += 5;
+  }
+  if (LIUCHONG[liunianBranch] === dayBranch) {
+    // 六冲 → 冲突动荡
+    score -= 10;
+  }
+  if (isXing(liunianBranch, dayBranch)) {
+    // 相刑 → 困扰
+    score -= 5;
+  }
+  if (HAI_PAIRS[liunianBranch] === dayBranch) {
+    // 相害 → 阻碍
+    score -= 5;
+  }
+  
+  // ===== 3. 流年五行与喜忌神关系 =====
+  if (favorable.includes(liunianStemElement)) {
+    score += 5;
+  }
+  if (favorable.includes(liunianBranchElement)) {
+    score += 3;
+  }
+  if (unfavorable.includes(liunianStemElement)) {
+    score -= 5;
+  }
+  if (unfavorable.includes(liunianBranchElement)) {
+    score -= 3;
+  }
+  
+  // ===== 4. 大运配合（如果提供） =====
+  if (dayunStem && dayunBranch) {
+    const dayunStemElement = STEM_ELEMENT[dayunStem];
+    const dayunBranchElement = BRANCH_ELEMENT[dayunBranch];
+    
+    // 大运与喜忌神
+    if (favorable.includes(dayunStemElement)) {
+      score += 3;
+    }
+    if (unfavorable.includes(dayunStemElement)) {
+      score -= 3;
+    }
+    
+    // 大运与流年的关系
+    if (LIUHE[dayunBranch] === liunianBranch) {
+      score += 3; // 大运与流年六合
+    }
+    if (LIUCHONG[dayunBranch] === liunianBranch) {
+      score -= 5; // 大运与流年六冲
+    }
+  }
+  
+  // ===== 5. 限制分数范围 =====
+  // 大部分年份应在35-65之间，极端年份可达25-75
+  score = Math.max(25, Math.min(75, score));
+  
+  return score;
+}
+
+/**
+ * 批量计算多年分数
+ */
+export function calculateYearScores(
+  years: number[],
+  baziContext: {
+    dayMaster: string;
+    dayBranch: string;
+    favorable: string[];
+    unfavorable: string[];
+    dayunList?: Array<{ period: string; years: string }>;
+  }
+): Map<number, number> {
+  const scores = new Map<number, number>();
+  
+  for (const year of years) {
+    // 查找当前年份对应的大运
+    let dayunStem: string | undefined;
+    let dayunBranch: string | undefined;
+    
+    if (baziContext.dayunList) {
+      for (const dayun of baziContext.dayunList) {
+        const [startYear, endYear] = dayun.years.split("-").map(Number);
+        if (year >= startYear && year <= endYear) {
+          dayunStem = dayun.period[0];
+          dayunBranch = dayun.period[1];
+          break;
+        }
+      }
+    }
+    
+    const score = calculateYearScore({
+      year,
+      dayMaster: baziContext.dayMaster,
+      dayBranch: baziContext.dayBranch,
+      favorable: baziContext.favorable,
+      unfavorable: baziContext.unfavorable,
+      dayunStem,
+      dayunBranch,
+    });
+    
+    scores.set(year, score);
+  }
+  
+  return scores;
+}

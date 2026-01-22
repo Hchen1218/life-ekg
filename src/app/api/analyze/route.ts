@@ -32,6 +32,81 @@ interface ExtendedParams extends FortuneAnalysisParams {
   pastEvents?: string;
   scope?: "timeline_p1" | "timeline_p2" | "timeline_p3";
   activationKey?: string;
+  sessionId?: string;
+}
+
+type RequestType = "timeline" | "summary" | "dimensions";
+const SESSION_EXPIRE_SECONDS = 600;
+
+async function getOrCreateSession(
+  redis: Redis,
+  normalizedKey: string,
+  sessionId: string
+): Promise<{ allowed: boolean; error?: string }> {
+  const activeSessionKey = `session:active:${normalizedKey}`;
+  const existingSession = await redis.get(activeSessionKey);
+
+  if (existingSession && existingSession !== sessionId) {
+    return { allowed: false, error: "报告正在生成中，请稍候" };
+  }
+
+  if (!existingSession) {
+    await redis.set(activeSessionKey, sessionId, { ex: SESSION_EXPIRE_SECONDS });
+    await redis.set(`session:progress:${sessionId}`, {
+      timeline: false,
+      summary: false,
+      dimensions: false,
+    }, { ex: SESSION_EXPIRE_SECONDS });
+  }
+
+  return { allowed: true };
+}
+
+async function updateSessionProgress(
+  redis: Redis,
+  sessionId: string,
+  normalizedKey: string,
+  requestType: RequestType,
+  name: string,
+  birthDate: string,
+  birthPlace: string,
+  gender: string,
+  tokenCount: number
+): Promise<void> {
+  const progressKey = `session:progress:${sessionId}`;
+  const progressData = await redis.get(progressKey);
+  
+  if (!progressData) return;
+
+  const progress = (typeof progressData === 'string' ? JSON.parse(progressData) : progressData) as Record<RequestType, boolean>;
+  progress[requestType] = true;
+
+  await redis.set(progressKey, progress, { ex: SESSION_EXPIRE_SECONDS });
+
+  if (progress.timeline && progress.summary && progress.dimensions) {
+    const usedAt = new Date().toISOString();
+    
+    await redis.set(`activation:${normalizedKey}`, {
+      used: true,
+      usedAt,
+      usedBy: name,
+    });
+    
+    await redis.set(`usage:${normalizedKey}`, {
+      name,
+      birthDate,
+      birthPlace,
+      gender,
+      usedAt,
+      key: normalizedKey,
+      tokens: tokenCount,
+    });
+
+    await redis.del(`session:active:${normalizedKey}`);
+    await redis.del(progressKey);
+
+    console.log(`[session] 报告生成完成，激活码已标记为已使用: ${normalizedKey}`);
+  }
 }
 
 function getPrompts(
@@ -157,7 +232,7 @@ function parseJsonFromContent(fullContent: string): unknown {
 export async function POST(request: NextRequest) {
   const body = await request.json() as ExtendedParams;
   
-  const { name, birthDate, birthTime, birthPlace, gender, type = "all", baziContextCache, pastEvents, scope, activationKey } = body;
+  const { name, birthDate, birthTime, birthPlace, gender, type = "all", baziContextCache, pastEvents, scope, activationKey, sessionId } = body;
   
   if (!name || !birthDate || !birthTime || !birthPlace) {
     return new Response(
@@ -190,6 +265,16 @@ export async function POST(request: NextRequest) {
       JSON.stringify({ error: "该激活码已被使用" }),
       { status: 403, headers: { "Content-Type": "application/json" } }
     );
+  }
+
+  if (sessionId && (type === "timeline" || type === "summary" || type === "dimensions")) {
+    const sessionCheck = await getOrCreateSession(redis, normalizedKey, sessionId);
+    if (!sessionCheck.allowed) {
+      return new Response(
+        JSON.stringify({ error: sessionCheck.error }),
+        { status: 429, headers: { "Content-Type": "application/json" } }
+      );
+    }
   }
 
   if (!SILICONFLOW_API_KEY) {
@@ -345,8 +430,20 @@ export async function POST(request: NextRequest) {
         sendEvent("complete", result);
         log(`========== 总耗时`, t0);
 
-
-        if (type === "all" || type === "summary") {
+        if (sessionId && (type === "timeline" || type === "summary" || type === "dimensions")) {
+          const requestType: RequestType = type === "timeline" ? "timeline" : type;
+          await updateSessionProgress(
+            redis,
+            sessionId,
+            normalizedKey,
+            requestType,
+            name,
+            birthDate,
+            birthPlace,
+            gender || "男",
+            tokenCount
+          );
+        } else if (type === "all") {
           const usedAt = new Date().toISOString();
           
           await redis.set(`activation:${normalizedKey}`, {
