@@ -1,4 +1,5 @@
-import lunisolar from "lunisolar";
+import { Solar, Lunar, LunarUtil } from 'lunar-javascript';
+import { getLongitude } from './city-coordinates';
 
 export interface BaziPillar {
   stem: string;
@@ -11,6 +12,7 @@ export interface BaziContext {
     gender: "男" | "女";
     birthDate: string;
     birthTime: string;
+    birthPlace?: string; // 新增出生地字段
     lunarDate: string;
   };
   bazi: {
@@ -68,30 +70,31 @@ const TEN_GODS: Record<string, Record<string, string>> = {
   癸: { 甲: "伤官", 乙: "食神", 丙: "正财", 丁: "偏财", 戊: "正官", 己: "七杀", 庚: "正印", 辛: "偏印", 壬: "劫财", 癸: "比肩" }
 };
 
-function getStemIndex(stem: string): number {
-  return STEMS.indexOf(stem);
-}
-
-function getBranchIndex(branch: string): number {
-  return BRANCHES.indexOf(branch);
-}
-
-function getGanZhi(stemIdx: number, branchIdx: number): string {
-  return STEMS[stemIdx % 10] + BRANCHES[branchIdx % 12];
-}
-
-function isYangStem(stem: string): boolean {
-  const idx = getStemIndex(stem);
-  return idx % 2 === 0;
-}
-
 function calculateWuxingStrength(bazi: BaziContext["bazi"]): Record<string, number> {
   const counts = { 金: 0, 木: 0, 水: 0, 火: 0, 土: 0 };
   
-  const pillars = [bazi.year, bazi.month, bazi.day, bazi.hour];
-  for (const pillar of pillars) {
-    counts[STEM_ELEMENT[pillar.stem] as keyof typeof counts] += 1;
-    counts[BRANCH_ELEMENT[pillar.branch] as keyof typeof counts] += 1;
+  // 天干权重 1.0
+  const stems = [bazi.year.stem, bazi.month.stem, bazi.day.stem, bazi.hour.stem];
+  for (const stem of stems) {
+    counts[STEM_ELEMENT[stem] as keyof typeof counts] += 1.0;
+  }
+  
+  // 地支藏干权重 (lunar-javascript 风格)
+  // 本气 0.6, 中气 0.3, 余气 0.1
+  const branches = [bazi.year.branch, bazi.month.branch, bazi.day.branch, bazi.hour.branch];
+  for (const branch of branches) {
+    const hiddenStems = LunarUtil.ZHI_HIDE_GAN[branch]; // 返回如 ["癸"]
+    if (hiddenStems && hiddenStems.length > 0) {
+      // 简单分配：如果有1个藏干，全拿1.0；如果有2个，0.7/0.3；如果有3个，0.6/0.3/0.1
+      // 这里为了简单，且为了配合 professional logic，我们使用主气判断
+      const mainQi = hiddenStems[0];
+      counts[STEM_ELEMENT[mainQi] as keyof typeof counts] += 1.0; // 地支力量强，算 1.0
+      
+      for (let i = 1; i < hiddenStems.length; i++) {
+         const subQi = hiddenStems[i];
+         counts[STEM_ELEMENT[subQi] as keyof typeof counts] += 0.3;
+      }
+    }
   }
   
   return counts;
@@ -102,30 +105,41 @@ function determineStrength(
   monthBranch: string,
   wuxingCounts: Record<string, number>
 ): "身强" | "身弱" {
-  let score = 0;
+  let selfScore = 0;
+  let opposeScore = 0;
   
-  const monthElement = BRANCH_ELEMENT[monthBranch];
-  if (monthElement === dayMasterElement) score += 30;
-  if (
-    (dayMasterElement === "木" && monthElement === "水") ||
-    (dayMasterElement === "火" && monthElement === "木") ||
-    (dayMasterElement === "土" && monthElement === "火") ||
-    (dayMasterElement === "金" && monthElement === "土") ||
-    (dayMasterElement === "水" && monthElement === "金")
-  ) {
-    score += 20;
-  }
-  
-  score += wuxingCounts[dayMasterElement] * 10;
+  // 1. 得令 (月支是帮身或生身) - 最重要
+  const monthHidden = LunarUtil.ZHI_HIDE_GAN[monthBranch] || [];
+  const monthMainQi = monthHidden[0];
+  const monthElement = STEM_ELEMENT[monthMainQi]; // 注意：lunar里藏干是天干，转五行
   
   const supportElements = {
-    金: ["土"], 木: ["水"], 水: ["金"], 火: ["木"], 土: ["火"]
+    金: ["土", "金"], 木: ["水", "木"], 水: ["金", "水"], 火: ["木", "火"], 土: ["火", "土"]
   };
-  for (const el of supportElements[dayMasterElement as keyof typeof supportElements] || []) {
-    score += wuxingCounts[el] * 5;
+  
+  const myParty = supportElements[dayMasterElement as keyof typeof supportElements];
+  
+  // 得令 +40分
+  if (myParty.includes(monthElement)) {
+    selfScore += 40;
+  } else {
+    opposeScore += 40;
   }
   
-  return score >= 50 ? "身强" : "身弱";
+  // 2. 得地 (全局五行能量对比)
+  // 将所有生助力量相加
+  for (const el of myParty) {
+    selfScore += wuxingCounts[el] * 10;
+  }
+  
+  // 将所有克泄耗力量相加
+  const allElements = ["金", "木", "水", "火", "土"];
+  const opposeElements = allElements.filter(e => !myParty.includes(e));
+  for (const el of opposeElements) {
+    opposeScore += wuxingCounts[el] * 10;
+  }
+  
+  return selfScore >= opposeScore ? "身强" : "身弱";
 }
 
 function determineFavorable(dayMasterElement: string, strength: "身强" | "身弱"): { favorable: string[]; unfavorable: string[] } {
@@ -162,113 +176,82 @@ function determinePattern(bazi: BaziContext["bazi"], dayMaster: string): string 
   return patternMap[tenGod] || "普通格局";
 }
 
-function calculateDayun(
-  gender: "男" | "女",
-  yearStem: string,
-  monthStemIdx: number,
-  monthBranchIdx: number,
-  birthDate: Date,
-  birthYear: number
-): BaziContext["dayun"] {
-  const isYang = isYangStem(yearStem);
-  const isMale = gender === "男";
-  const isForward = (isMale && isYang) || (!isMale && !isYang);
-  
-  const startAge = 6;
-  const startYear = birthYear + startAge;
-  
-  const list: Array<{ period: string; ages: string; years: string }> = [];
-  
-  for (let i = 0; i < 8; i++) {
-    let stemIdx: number;
-    let branchIdx: number;
-    
-    if (isForward) {
-      stemIdx = (monthStemIdx + 1 + i) % 10;
-      branchIdx = (monthBranchIdx + 1 + i) % 12;
-    } else {
-      stemIdx = (monthStemIdx - 1 - i + 10) % 10;
-      branchIdx = (monthBranchIdx - 1 - i + 12) % 12;
-    }
-    
-    const period = getGanZhi(stemIdx, branchIdx);
-    const ageStart = startAge + i * 10;
-    const ageEnd = ageStart + 9;
-    const yearStart = startYear + i * 10;
-    const yearEnd = yearStart + 9;
-    
-    list.push({
-      period,
-      ages: `${ageStart}-${ageEnd}岁`,
-      years: `${yearStart}-${yearEnd}`
-    });
-  }
-  
-  const currentYear = new Date().getFullYear();
-  const age = currentYear - birthYear;
-  const currentIdx = Math.floor((age - startAge) / 10);
-  const current = list[Math.max(0, Math.min(currentIdx, list.length - 1))];
-  
-  return {
-    startAge,
-    direction: isForward ? "顺排" : "逆排",
-    current,
-    list
-  };
-}
-
-function calculateLiunian(dayMaster: string, startYear: number): BaziContext["liunian"] {
-  const result: BaziContext["liunian"] = [];
-  const currentYear = new Date().getFullYear();
-  
-  for (let year = currentYear - 10; year <= currentYear + 10; year++) {
-    const stemIdx = (year - 4) % 10;
-    const branchIdx = (year - 4) % 12;
-    const ganzhi = getGanZhi(stemIdx, branchIdx);
-    const stem = STEMS[stemIdx];
-    const relation = TEN_GODS[dayMaster]?.[stem] || "未知";
-    
-    result.push({ year, ganzhi, relation });
-  }
-  
-  return result;
-}
-
 export function calculateBazi(params: {
   birthDate: string;
   birthTime: string;
   gender: "男" | "女";
+  birthPlace?: string; // 增加出生地
 }): BaziContext {
-  const { birthDate, birthTime, gender } = params;
+  const { birthDate, birthTime, gender, birthPlace } = params;
   
-  const dateTimeStr = `${birthDate} ${birthTime}`;
-  const lsr = lunisolar(dateTimeStr);
+  // 1. 获取经度 (默认120)
+  const longitude = getLongitude(birthPlace || "");
   
-  const char8 = lsr.char8;
-  const lunar = lsr.lunar;
+  // 2. 解析时间并转换为 Solar (阳历)
+  const [year, month, day] = birthDate.split("-").map(Number);
+  
+  let hour = 12;
+  let minute = 0;
+  
+  // 处理 "HH:mm" 或 "XX时" 格式
+  if (birthTime.includes(":")) {
+    const parts = birthTime.split(":").map(Number);
+    hour = parts[0];
+    minute = parts[1];
+  } else {
+    // 处理中文时辰 (如 "辰时") -> 映射到该时辰的中间时刻
+    const shichenMap: Record<string, number> = {
+      "子时": 0, "丑时": 2, "寅时": 4, "卯时": 6, "辰时": 8, "巳时": 10,
+      "午时": 12, "未时": 14, "申时": 16, "酉时": 18, "戌时": 20, "亥时": 22
+    };
+    if (shichenMap[birthTime] !== undefined) {
+      hour = shichenMap[birthTime];
+      minute = 0;
+    }
+  }
+  
+  // 经度差
+  const offsetMinutes = (longitude - 120.0) * 4;
+  
+  const baseDate = new Date(year, month - 1, day, hour, minute);
+  // 加/减 分钟 (使用毫秒级精度，避免 setMinutes 取整导致刚好落在整点)
+  baseDate.setTime(baseDate.getTime() + offsetMinutes * 60 * 1000);
+  
+  // 用校正后的时间重新生成 Lunar
+  // 注意：真太阳时只影响「时柱」。年月日柱通常不受20分钟影响，除非刚好在子时交界。
+  // 如果在 23:50 出生，减20分变成 23:30，还是前一天？不，23:00-01:00 是子时。
+  // 如果是 00:10 出生，减20分变成 23:50 (前一天)，这时候日柱可能要变！
+  // 所以直接调整时间戳是正确的做法。
+  
+  const trueSolar = Solar.fromDate(baseDate);
+  const trueLunar = trueSolar.getLunar();
+  const eightChar = trueLunar.getEightChar();
+  
+  // 设置流派：2 = 晚子时算明天 (通常八字排盘 23:00 后算明天)
+  eightChar.setSect(2);
   
   const bazi: BaziContext["bazi"] = {
     year: {
-      stem: char8.year.stem.toString(),
-      branch: char8.year.branch.toString(),
-      element: STEM_ELEMENT[char8.year.stem.toString()] + BRANCH_ELEMENT[char8.year.branch.toString()]
+      stem: eightChar.getYearGan(),
+      branch: eightChar.getYearZhi(),
+      element: STEM_ELEMENT[eightChar.getYearGan()] + BRANCH_ELEMENT[eightChar.getYearZhi()]
     },
     month: {
-      stem: char8.month.stem.toString(),
-      branch: char8.month.branch.toString(),
-      element: STEM_ELEMENT[char8.month.stem.toString()] + BRANCH_ELEMENT[char8.month.branch.toString()]
+      stem: eightChar.getMonthGan(),
+      branch: eightChar.getMonthZhi(),
+      element: STEM_ELEMENT[eightChar.getMonthGan()] + BRANCH_ELEMENT[eightChar.getMonthZhi()]
     },
     day: {
-      stem: char8.day.stem.toString(),
-      branch: char8.day.branch.toString(),
-      element: STEM_ELEMENT[char8.day.stem.toString()] + BRANCH_ELEMENT[char8.day.branch.toString()]
+      stem: eightChar.getDayGan(),
+      branch: eightChar.getDayZhi(),
+      element: STEM_ELEMENT[eightChar.getDayGan()] + BRANCH_ELEMENT[eightChar.getDayZhi()]
     },
     hour: {
-      stem: char8.hour.stem.toString(),
-      branch: char8.hour.branch.toString(),
-      element: STEM_ELEMENT[char8.hour.stem.toString()] + BRANCH_ELEMENT[char8.hour.branch.toString()]
+      stem: eightChar.getTimeGan(),
+      branch: eightChar.getTimeZhi(),
+      element: STEM_ELEMENT[eightChar.getTimeGan()] + BRANCH_ELEMENT[eightChar.getTimeZhi()]
     },
-    formatted: `${char8.year} ${char8.month} ${char8.day} ${char8.hour}`
+    formatted: `${eightChar.getYearGan()}${eightChar.getYearZhi()} ${eightChar.getMonthGan()}${eightChar.getMonthZhi()} ${eightChar.getDayGan()}${eightChar.getDayZhi()} ${eightChar.getTimeGan()}${eightChar.getTimeZhi()}`
   };
   
   const dayMaster = bazi.day.stem;
@@ -280,33 +263,61 @@ export function calculateBazi(params: {
   
   const pattern = determinePattern(bazi, dayMaster);
   
-  const birthDateObj = new Date(birthDate);
-  const birthYear = birthDateObj.getFullYear();
-  const monthStemIdx = getStemIndex(bazi.month.stem);
-  const monthBranchIdx = getBranchIndex(bazi.month.branch);
+  // 大运计算 (lunar-javascript 有 Yun 模块)
+  // const yun = eightChar.getYun(gender === "男" ? 1 : 0); // 1男 0女
+  const genderNum = gender === "男" ? 1 : 0;
+  const yun = eightChar.getYun(genderNum);
   
-  const dayun = calculateDayun(
-    gender,
-    bazi.year.stem,
-    monthStemIdx,
-    monthBranchIdx,
-    birthDateObj,
-    birthYear
-  );
+  const startAge = yun.getStartYear(); // 起运年数
+  const startYear = year + startAge;
   
-  const liunian = calculateLiunian(dayMaster, birthYear);
+  const daYunArr = yun.getDaYun();
+  const dayunList = daYunArr.slice(1, 9).map(dy => { // 取前8步大运
+     const startAge = dy.getStartYear();
+     const endAge = dy.getEndYear();
+     const dyGanZhi = dy.getGanZhi();
+     // lunar-javascript 的 DaYun 对象不直接提供 SolarYear，需手动计算
+     const startSolarYear = year + startAge;
+     const endSolarYear = year + endAge;
+     
+     return {
+       period: dyGanZhi,
+       ages: `${startAge}-${endAge}岁`,
+       years: `${startSolarYear}-${endSolarYear}` // 粗略年份
+     };
+  });
   
-  const lunarYear = lunar.getYearName();
-  const lunarMonth = lunar.getMonthName();
-  const lunarDay = lunar.getDayName();
-  const lunarHour = lunar.getHourName();
+  // 查找当前大运
+  const currentYear = new Date().getFullYear();
+  const currentDaYun = dayunList.find(d => {
+    const [s, e] = d.years.split("-").map(Number);
+    return currentYear >= s && currentYear <= e;
+  }) || dayunList[0];
+  
+  // 流年 (简单推算)
+  const liunian = [];
+  for (let y = currentYear - 10; y <= currentYear + 10; y++) {
+    // 简单推算流年干支 (lunar-js 也有，但这里手动快)
+    // 1984甲子
+    const offset = y - 1984;
+    const stemIdx = (offset % 10 + 10) % 10;
+    const branchIdx = (offset % 12 + 12) % 12;
+    const stem = STEMS[stemIdx];
+    const branch = BRANCHES[branchIdx];
+    liunian.push({
+      year: y,
+      ganzhi: stem + branch,
+      relation: TEN_GODS[dayMaster]?.[stem] || "未知"
+    });
+  }
   
   return {
     basic: {
       gender,
       birthDate,
       birthTime,
-      lunarDate: `${lunarYear}年${lunarMonth}${lunarDay}${lunarHour}时`
+      birthPlace,
+      lunarDate: `${trueLunar.getYearInGanZhi()}年${trueLunar.getMonthInChinese()}月${trueLunar.getDayInChinese()} ${trueLunar.getTimeZhi()}时`
     },
     bazi,
     wuxing: {
@@ -322,7 +333,12 @@ export function calculateBazi(params: {
       unfavorable
     },
     pattern,
-    dayun,
+    dayun: {
+      startAge: startAge,
+      direction: yun.isForward() ? "顺排" : "逆排",
+      current: currentDaYun,
+      list: dayunList
+    },
     liunian
   };
 }
@@ -331,8 +347,7 @@ export function getTenGodRelation(dayMaster: string, targetStem: string): string
   return TEN_GODS[dayMaster]?.[targetStem] || "未知";
 }
 
-// ========== 流年评分算法 ==========
-
+// ========== 流年评分算法 (保持原样，或微调) ==========
 // 五行生克关系
 const WUXING_GENERATES: Record<string, string> = {
   木: "火", 火: "土", 土: "金", 金: "水", 水: "木"

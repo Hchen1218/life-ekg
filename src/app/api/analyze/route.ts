@@ -312,6 +312,7 @@ export async function POST(request: NextRequest) {
             birthDate,
             birthTime,
             gender: gender === "女" ? "女" : "男",
+            birthPlace, // Pass the birthPlace for True Solar Time calculation
           });
           log("八字计算完成", t0);
 
